@@ -1,7 +1,6 @@
 # Document classification with Apache Spark on an American Classic
 
-These are files tokenized and put into passages of length=10: 
-
+### These are files tokenized and put into passages of length=10: 
 ./mock.tokens
 
 ./watch.tokens
