@@ -1,0 +1,18 @@
+(Number of training examples: ,419)
+(Number of test examples: ,167)
+Training Naive Bayes Model...
+(NB Training accuracy: ,0.9212410501193318)
+(NB Test set accuracy: ,0.7844311377245509)
+Naive Bayes Confusion Matrix:
+(Predict:mock,label:mock -> ,89)
+(Predict:watch,label:watch -> ,42)
+(Predict:mock,label:watch -> ,23)
+(Predict:watch,label:mock -> ,13)
+Training Random Forest Regression Model...
+(RF Training AuROC: ,0.980446863231377)
+(RF Test AuROC: ,0.8358974358974359)
+Attempting to write RF ROC to file...
+Training Gradient Boosted Trees Regression Model...
+(GB Training AuROC: ,0.9989207311472399)
+(GB Test AuROC: ,0.8264705882352942)
+Attempting to write GB ROC to file...
