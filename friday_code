@@ -1,0 +1,119 @@
+// launch shell: ./bin/spark-shell --packages "org.apache.lucene:lucene-analyzers-common:5.1.0"
+
+////////////////////////////////////////////////////////
+////// demonstrating the Stemmer tokens ////////////////
+////////////////////////////////////////////////////////
+
+import org.apache.lucene.analysis.en.EnglishAnalyzer  
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute  
+import scala.collection.mutable.ArrayBuffer
+import org.apache.spark.mllib.feature.HashingTF
+import org.apache.spark.mllib.feature.IDF
+
+object Stemmer {
+  def tokenize(content:String):Seq[String]={
+    val analyzer=new EnglishAnalyzer()
+    val tokenStream=analyzer.tokenStream("contents", content)
+    val term=tokenStream.addAttribute(classOf[CharTermAttribute])
+    tokenStream.reset() 
+    var result = ArrayBuffer.empty[String]
+
+    while(tokenStream.incrementToken()) {
+        val termValue = term.toString
+        if (!(termValue matches ".*[\\d\\.].*")) {
+          result += term.toString
+        }
+    }
+    tokenStream.end()
+    tokenStream.close()
+    result
+  }
+}
+
+val kipling= sc.textFile("kipling.txt")
+kipling.collect().foreach(println)
+
+val stemmed = kipling.map{x=>  Stemmer.tokenize(x)}
+stemmed.collect().foreach(println)
+
+val tf = new HashingTF(10)
+val tfdocs = tf.transform(stemmed)
+tfdocs.collect().foreach(println)
+
+val idfModel = new IDF(minDocFreq = 2).fit(tfdocs)
+val idfDocs = idfModel.transform(tfdocs)
+idfDocs.collect().foreach(println)
+
+
+
+////////////////////////////////////////////////////////
+////// demonstrating the Stemmer tokens ////////////////
+////////////////////////////////////////////////////////
+import org.apache.spark.mllib.tree.RandomForest
+import org.apache.spark.mllib.tree.model.RandomForestModel
+import org.apache.spark.mllib.util.MLUtils
+import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
+
+val mock = sc.textFile("mock.tokens")
+val watch = sc.textFile("watch.tokens")
+
+/// convert data to numeric features with TF
+val tf = new HashingTF(10000)
+val mockData = mock.map { line =>
+  var target = "1"
+  LabeledPoint(target.toDouble, tf.transform(line.split(",")))
+}
+val watchData = watch.map { line =>
+  var target = "0"
+  LabeledPoint(target.toDouble, tf.transform(line.split(",")))
+}
+
+/// build IDF model and transform data into modeling sets
+val data = mockData.union(watchData)
+val splits = data.randomSplit(Array(0.7, 0.3))
+val trainDocs = splits(0).map{ x=>x.features}
+val idfModel = new IDF(minDocFreq = 3).fit(trainDocs)
+
+val train = splits(0).map{ point=>
+  LabeledPoint(point.label,idfModel.transform(point.features))
+}
+val test = splits(1).map{ point=>
+  LabeledPoint(point.label,idfModel.transform(point.features))
+}
+train.cache()
+
+///// RANDOM FOREST REGRESSION
+// Train a RandomForest model.
+//  Empty categoricalFeaturesInfo indicates all features are continuous.
+val categoricalFeaturesInfo = Map[Int, Int]()
+val numClasses = 2
+val featureSubsetStrategy = "auto" // Let the algorithm choose.
+val impurity = "variance"
+val maxDepth = 10
+val maxBins = 32
+val numTrees = 50 
+
+val modelRF = RandomForest.trainRegressor(train, categoricalFeaturesInfo, numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins)
+
+//// metrics 
+val trainScores = train.map { point =>
+  val prediction = modelRF.predict(point.features)
+  (prediction, point.label)
+}
+val testScores = test.map { point =>
+  val prediction = modelRF.predict(point.features)
+  (prediction, point.label)
+}
+val metricsTrain = new BinaryClassificationMetrics(trainScores,100)
+val metricsTest = new BinaryClassificationMetrics(testScores,100)
+metricsTrain.areaUnderROC()
+metricsTest.areaUnderROC()
+//res11: Double = 0.9811325444963708
+//res12: Double = 0.8844304733727815
+
+val trainroc= metricsTrain.roc()
+val testroc= metricsTest.roc()
+testroc.saveAsTextFile("rftest")
+//trainroc.saveAsTextFile("rftrain")
+
